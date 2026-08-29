@@ -1,1 +1,2 @@
-# mule_dtc
+Indian banks score mule accounts one at a time, and a mule is invisible that way: valid KYC, small balance, ordinary history. We stopped scoring accounts and started scoring networks. We build a graph of only the transfers that look like laundering hops, find tightly-connected groups inside it, and score the group. It uses no fraud labels at all, which matters because real banks have almost none. On unseen data it puts 88% true mules in its top 200 alerts, versus a rules baseline where 60% of alerts are corner shops.
+
