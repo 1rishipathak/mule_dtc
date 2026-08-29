@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mule network — live detection demo</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#EEF1EE;--surface:#fff;--ink:#16232B;--ink2:#546C77;--line:#D7DEDB;
+ --done:#0E7C6B;--active:#B8790F;--risk:#A8321E;--pend:#9DABA7}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:26px 20px 60px}
+.mono{font-family:"IBM Plex Mono",monospace}
+header{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:16px}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;
+ text-transform:uppercase;color:var(--ink2)}
+h1{font-size:24px;font-weight:600;margin:6px 0 0;letter-spacing:-.01em}
+.bar{display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap}
+button{font-family:"IBM Plex Mono",monospace;font-size:12.5px;background:var(--ink);color:#fff;
+ border:0;border-radius:6px;padding:8px 16px;cursor:pointer}
+button.ghost{background:none;color:var(--ink2);border:1px solid var(--line)}
+button:focus-visible{outline:2px solid var(--active);outline-offset:2px}
+.clock{font-family:"IBM Plex Mono",monospace;font-size:22px;font-weight:500;min-width:96px}
+input[type=range]{flex:1;min-width:160px;accent-color:var(--done)}
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:6px;margin-top:4px}
+svg{display:block;width:100%;height:auto}
+.banner{margin-top:12px;padding:11px 14px;border-radius:8px;border:1px solid var(--active);
+ background:#FBF3E2;font-size:14px;opacity:0;transition:opacity .4s}
+.banner.on{opacity:1}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:15px}
+.card.win{border-color:#B6D3CC;background:#F3F9F7}
+.card h3{margin:0;font-size:14px;font-weight:600}
+.card .big{font-family:"IBM Plex Mono",monospace;font-size:30px;font-weight:500;margin:8px 0 2px}
+.card p{margin:0;font-size:12.5px;color:var(--ink2);line-height:1.5}
+.money{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:15px}
+.track{display:flex;height:24px;border-radius:5px;overflow:hidden;margin:10px 0 8px;background:var(--line)}
+.track i{display:block;transition:width .3s}
+.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--ink2)}
+.legend b{font-family:"IBM Plex Mono",monospace;color:var(--ink);font-weight:500}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.note{font-size:12px;color:var(--ink2);margin-top:16px;line-height:1.6}
+@media(max-width:620px){.cols{grid-template-columns:1fr}}
+</style></head><body><div class="wrap">
+<header>
+ <div class="eyebrow">Replay of a real episode from the simulator — network NET11, debut payout</div>
+ <h1>A fraud payout, layered across 11 accounts in 29 minutes</h1>
+ <div class="bar">
+  <button id="play" type="button">Play</button>
+  <button id="reset" class="ghost" type="button">Restart</button>
+  <div class="clock" id="clock">T+0 min</div>
+  <input type="range" id="scrub" min="0" max="45" value="0" aria-label="Timeline position">
+ </div>
+</header>
+
+<div class="stage"><svg id="g" viewBox="0 0 900 380" role="img"
+  aria-label="Animated graph of a fraud payout spreading across mule accounts"></svg></div>
+<div class="banner" id="banner"><strong>Structural score fires at T+8.</strong>
+ No fraud report exists yet — the victim has not realised anything is wrong.</div>
+
+<div class="cols">
+ <div class="card"><h3>Account-level rules</h3>
+  <div class="big" id="rulesN" style="color:var(--risk)">0 / 11</div>
+  <p>Each account looks ordinary in isolation: valid KYC, small balance, no history.</p></div>
+ <div class="card win"><h3>Network view</h3>
+  <div class="big" id="oursN" style="color:var(--done)">0 / 11</div>
+  <p>The community is dense, non-reciprocal and empties in minutes. No labels used.</p></div>
+</div>
+
+<div class="money">
+ <h3 style="margin:0;font-size:14px">Where the Rs 3,59,571 ended up</h3>
+ <div class="track">
+  <i id="mHeld" style="background:var(--done);width:0"></i>
+  <i id="mMove" style="background:var(--active);width:0"></i>
+  <i id="mGone" style="background:var(--risk);width:0"></i>
+ </div>
+ <div class="legend">
+  <span><span class="sw" style="background:var(--done)"></span>Held <b id="vHeld">Rs 0</b></span>
+  <span><span class="sw" style="background:var(--active)"></span>Still moving <b id="vMove">Rs 0</b></span>
+  <span><span class="sw" style="background:var(--risk)"></span>Cashed out <b id="vGone">Rs 0</b></span>
+ </div>
+</div>
+
+<p class="note">Every figure is replayed from the pipeline, not scripted: account ranks come from
+<span class="mono">final_score</span>, detection times from the first observable onward transfer, and the
+money split is a taint replay in which each rupee is counted once. In this episode nothing reaches a
+cash-out point before the network is flagged, so the red bar stays empty — across the full dataset
+about 4-8% does get out.</p>
+</div>
+
+<script>
+const EP = {"network":"NET11","payout":359571.0,"victim":"A008604","collector":"A038854","nodes":{"A000065":{"role":"cashout","ours":7,"rules":5776,"flagged_at":23},"A008604":{"role":"victim","ours":3508,"rules":33338,"flagged_at":0},"A018924":{"role":"other","ours":22927,"rules":23748,"flagged_at":null},"A038854":{"role":"collector","ours":138,"rules":416,"flagged_at":8},"A038995":{"role":"mule","ours":187,"rules":498,"flagged_at":15},"A039000":{"role":"mule","ours":96,"rules":201,"flagged_at":22},"A039004":{"role":"mule","ours":25,"rules":3416,"flagged_at":28},"A039013":{"role":"mule","ours":96,"rules":376,"flagged_at":21},"A039016":{"role":"mule","ours":55,"rules":152,"flagged_at":null},"A039017":{"role":"mule","ours":55,"rules":229,"flagged_at":23},"A039018":{"role":"mule","ours":55,"rules":3,"flagged_at":29}},"events":[{"t":0,"from":"A008604","to":"A038854","amt":359571.0},{"t":8,"from":"A038854","to":"A039016","amt":57992.37},{"t":9,"from":"A038854","to":"A038995","amt":74714.4},{"t":11,"from":"A038854","to":"A039013","amt":66160.12},{"t":13,"from":"A038854","to":"A039000","amt":71492.81},{"t":13,"from":"A038854","to":"A039004","amt":71241.85},{"t":15,"from":"A038995","to":"A039018","amt":59306.03},{"t":21,"from":"A039013","to":"A039016","amt":60626.59},{"t":22,"from":"A039000","to":"A039017","amt":61321.24},{"t":23,"from":"A039017","to":"A000065","amt":58423.81},{"t":25,"from":"A038854","to":"A018924","amt":1128.32},{"t":28,"from":"A039004","to":"A039018","amt":62905.25},{"t":29,"from":"A039018","to":"A000065","amt":57000.3},{"t":35,"from":"A039018","to":"A000065","amt":56046.63},{"t":42,"from":"A039016","to":"A000065","amt":52492.29}],"caught_ours":9,"caught_rules":2,"held":223963.03,"gone":0.0,"still_moving":135607.97,"first_detect":0};
+const NS="http://www.w3.org/2000/svg";
+const svg=document.getElementById("g");
+const ids=Object.keys(EP.nodes);
+const COL={victim:"#546C77",collector:"#A8321E",mule:"#B8790F",cashout:"#16232B",other:"#9DABA7"};
+
+// layered layout: victim -> collector -> mules -> cash-out
+const lanes={victim:[],collector:[],mule:[],other:[],cashout:[]};
+ids.forEach(a=>lanes[EP.nodes[a].role].push(a));
+const X={victim:70,collector:250,mule:520,other:520,cashout:830};
+const pos={};
+Object.entries(lanes).forEach(([role,arr])=>{
+  const mid=arr.concat(role==="mule"?lanes.other:[]);
+  const list=(role==="other")?[]:(role==="mule"?mid:arr);
+  list.forEach((a,i)=>{
+    const n=list.length, span=Math.min(300,n*46);
+    pos[a]={x:X[role],y:190+(n===1?0:(i-(n-1)/2)*(span/Math.max(n-1,1)))};
+  });
+});
+ids.forEach(a=>{if(!pos[a])pos[a]={x:X.other,y:190};});
+
+const eLayer=document.createElementNS(NS,"g"), nLayer=document.createElementNS(NS,"g");
+svg.appendChild(eLayer); svg.appendChild(nLayer);
+const circles={},labels={};
+ids.forEach(a=>{
+  const n=EP.nodes[a],p=pos[a];
+  const c=document.createElementNS(NS,"circle");
+  c.setAttribute("cx",p.x);c.setAttribute("cy",p.y);c.setAttribute("r",n.role==="victim"?17:13);
+  c.setAttribute("fill","#fff");c.setAttribute("stroke",COL[n.role]);c.setAttribute("stroke-width",2);
+  c.setAttribute("opacity",.28);
+  nLayer.appendChild(c); circles[a]=c;
+  const t=document.createElementNS(NS,"text");
+  t.setAttribute("x",p.x);t.setAttribute("y",p.y+30);t.setAttribute("text-anchor","middle");
+  t.setAttribute("font-size","10");t.setAttribute("font-family","IBM Plex Mono, monospace");
+  t.setAttribute("fill","#546C77");t.setAttribute("opacity",.3);
+  t.textContent=n.role==="victim"?"victim":(n.role==="cashout"?"cash-out":a.slice(-4));
+  nLayer.appendChild(t); labels[a]=t;
+});
+
+const MAXT=45; let t=0, timer=null;
+const fmt=v=>"Rs "+Math.round(v).toLocaleString("en-IN");
+const isFlagged=(a,tt)=>{const n=EP.nodes[a];
+  return n.ours<=200 && n.flagged_at!==null && n.flagged_at<=tt && n.role!=="victim";};
+
+function replay(tt){
+  eLayer.innerHTML="";
+  const taint={}; taint[EP.collector]=0;
+  let held=0,gone=0;
+  const seen=new Set();
+  EP.events.filter(e=>e.t<=tt).sort((a,b)=>a.t-b.t).forEach(e=>{
+    seen.add(e.from); seen.add(e.to);
+    const p1=pos[e.from],p2=pos[e.to];
+    const ln=document.createElementNS(NS,"path");
+    const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2-Math.abs(p2.y-p1.y)*0.18-14;
+    ln.setAttribute("d",`M${p1.x} ${p1.y} Q${mx} ${my} ${p2.x} ${p2.y}`);
+    ln.setAttribute("fill","none");
+    ln.setAttribute("stroke",isFlagged(e.to,tt)?"#0E7C6B":"#B8790F");
+    ln.setAttribute("stroke-width",Math.max(1,Math.min(5,Math.log10(e.amt)-3)));
+    ln.setAttribute("opacity",.5);
+    eLayer.appendChild(ln);
+    // taint accounting, each rupee once
+    if(e.from===EP.victim){taint[e.to]=(taint[e.to]||0)+e.amt;return;}
+    const bal=taint[e.from]||0; if(bal<=0)return;
+    const mv=Math.min(bal,e.amt); taint[e.from]=bal-mv;
+    if(isFlagged(e.to,e.t)) held+=mv;
+    else if(EP.nodes[e.to].role==="cashout") gone+=mv;
+    else taint[e.to]=(taint[e.to]||0)+mv;
+  });
+  ids.forEach(a=>{
+    const on=seen.has(a), fl=isFlagged(a,tt);
+    circles[a].setAttribute("opacity",on?1:.28);
+    circles[a].setAttribute("fill",fl?"#0E7C6B":"#fff");
+    circles[a].setAttribute("stroke",fl?"#0E7C6B":COL[EP.nodes[a].role]);
+    circles[a].setAttribute("stroke-width",fl?3:2);
+    labels[a].setAttribute("opacity",on?.85:.3);
+  });
+  const moving=Object.values(taint).reduce((s,v)=>s+Math.max(v,0),0);
+  const tot=EP.payout;
+  document.getElementById("mHeld").style.width=(held/tot*100)+"%";
+  document.getElementById("mMove").style.width=(moving/tot*100)+"%";
+  document.getElementById("mGone").style.width=(gone/tot*100)+"%";
+  document.getElementById("vHeld").textContent=fmt(held);
+  document.getElementById("vMove").textContent=fmt(moving);
+  document.getElementById("vGone").textContent=fmt(gone);
+  const ro=ids.filter(a=>seen.has(a)&&EP.nodes[a].ours<=200&&isFlagged(a,tt)).length;
+  const rr=ids.filter(a=>seen.has(a)&&EP.nodes[a].rules<=200).length;
+  document.getElementById("oursN").textContent=ro+" / "+ids.length;
+  document.getElementById("rulesN").textContent=rr+" / "+ids.length;
+  document.getElementById("clock").textContent="T+"+tt+" min";
+  document.getElementById("scrub").value=tt;
+  document.getElementById("banner").classList.toggle("on",tt>=EP.first_detect+8);
+}
+
+function step(){ t++; if(t>MAXT){pause();return;} replay(t); }
+function play(){ if(timer)return; timer=setInterval(step,150);
+  document.getElementById("play").textContent="Pause"; }
+function pause(){ clearInterval(timer); timer=null;
+  document.getElementById("play").textContent="Play"; }
+document.getElementById("play").onclick=()=>timer?pause():play();
+document.getElementById("reset").onclick=()=>{pause();t=0;replay(0);};
+document.getElementById("scrub").oninput=e=>{pause();t=+e.target.value;replay(t);};
+replay(0);
+</script></body></html>
